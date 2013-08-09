@@ -45,6 +45,8 @@
 #include <avr/interrupt.h>
 #include <stdlib.h>
 
+#include <Arduino.h>
+
 #include "../ArduinoLUFA/ArduinoLUFA.h"
 #include "PTPCodes.h"
 
@@ -52,11 +54,6 @@
     #error The current board does not support host mode
 #endif
 
-extern char PTP_Buffer[PTP_BUFFER_SIZE];
-extern uint16_t PTP_Bytes_Received, PTP_Bytes_Remaining, PTP_Bytes_Total, PTP_Response_Code, PTP_OpsCount;
-extern char PTP_CameraModel[23];
-extern uint16_t* PTP_Ops; // note that this memory space is reused -- only available immediately after init
-extern uint32_t PTP_CameraVendor;
 
 enum PTPStat {
     PTP_ERROR          = -1,
@@ -66,7 +63,7 @@ enum PTPStat {
 };
 
 enum PTPVendor {
-  VENDOR_CANON,
+  VENDOR_CANON = 1,
   VENDOR_NIKON,
   VENDOR_PTP
 };
@@ -100,11 +97,11 @@ public:
     uint8_t aperture();
     uint8_t iso();
     
+    PTPStat openSession();
     
     
 private:
     
-    void _openSession();
     void _doTasks();
     void _checkOps();
     bool _processEventCanon();
@@ -160,6 +157,8 @@ private:
     uint32_t m_curAperture;
     uint32_t m_curISO;
     
+    
+    bool m_session;
     bool m_ready;
     bool m_busy;
     bool m_lvOn;
@@ -180,6 +179,8 @@ private:
     // pre-initialized object
 extern PTPCamera Camera;
 
+
+
     // global functions
 
 void EVENT_USB_Host_HostError(const uint8_t p_err);
@@ -188,12 +189,25 @@ void EVENT_USB_Host_DeviceUnattached(void);
 void EVENT_USB_Host_DeviceEnumerationFailed(const uint8_t p_err, const uint8_t p_suberr);
 void EVENT_USB_Host_DeviceEnumerationComplete(void);
 
+
+
+extern USB_ClassInfo_SI_Host_t DigitalCamera_SI_Interface;
+
+extern uint8_t fooDebug;
+
+extern char PTP_Buffer[PTP_BUFFER_SIZE];
+extern uint16_t PTP_Bytes_Received, PTP_Bytes_Remaining, PTP_Bytes_Total, PTP_Response_Code, PTP_OpsCount;
+extern char PTP_CameraModel[23];
+extern uint16_t* PTP_Ops; // note that this memory space is reused -- only available immediately after init
+extern uint32_t PTP_CameraVendor;
+
 PTPStat PTP_Transaction(uint16_t p_op, uint8_t p_recv, uint8_t p_parmCount, uint32_t *p_parms, uint8_t p_dataCount, uint8_t *p_data);
 PTPStat PTP_FetchData(uint16_t p_offset);
 uint8_t SI_Host_ReceiveResponseCode(USB_ClassInfo_SI_Host_t* const p_interface, PIMA_Container_t *p_PIMABlock);
-PTPStat PTP_OpenSession(void);
+PTPStat PTP_OpenSession(void) __attribute__ ((noinline));
 PTPStat PTP_CloseSession(void);
 PTPStat PTP_GetDeviceInfo(void);
+
 
 void UnicodeToASCII(char *p_string, char *p_buf);
 

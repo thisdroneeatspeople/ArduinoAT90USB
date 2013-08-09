@@ -31,9 +31,11 @@ USB_ClassInfo_SI_Host_t DigitalCamera_SI_Interface =
 };
 
 
+uint8_t fooDebug;
+
 
 char PTP_Buffer[PTP_BUFFER_SIZE];
-uint16_t PTP_Bytes_Received, PTP_Bytes_Remaining, PTP_Bytes_Total, PTP_OpsCount;
+uint16_t PTP_Bytes_Received, PTP_Bytes_Remaining, PTP_Bytes_Total, PTP_OpsCount, PTP_Response_Code;
 
 char PTP_CameraModel[23];
 uint32_t PTP_CameraVendor; 
@@ -209,9 +211,16 @@ PTPCamera::PTPCamera() {
 
 bool PTPCamera::connect() {
     
+    _doTasks();
+    
     if( status() != STAT_CONNECTED )
         return false;
     
+    if( USB_HostState != HOST_STATE_Configured )
+        return false;
+
+    if( ! m_session )
+        return false;
     
     if( PTP_CameraVendor == PTP_VENDOR_CANON ) {
         m_vendor = VENDOR_CANON;
@@ -258,19 +267,19 @@ bool PTPCamera::connect() {
         
             // setup camera
         
-        if( PTP_Transaction(EOS_OC_PC_CONNECT, 0, 1, data, 0, NULL) != PTP_OK ) {
+/*        if( PTP_Transaction(EOS_OC_PC_CONNECT, 0, 1, data, 0, NULL) != PTP_OK ) {
             status(STAT_ERROR);
             error(ERROR_SUPPORTED);
             return false;
-        }
+        } */
 
         data[0] = 0x00000001;
 
-        if( PTP_Transaction(EOS_OC_EXTENDED_EVENT_INFO_SET, 0, 1, data, 0, NULL) != PTP_OK ) {
+/*        if( PTP_Transaction(EOS_OC_EXTENDED_EVENT_INFO_SET, 0, 1, data, 0, NULL) != PTP_OK ) {
             status(STAT_ERROR);
             error(ERROR_SUPPORTED);
             return false;
-        }
+        } */
         
     }
     
@@ -1270,27 +1279,44 @@ bool PTPCamera::_getPropertyInfo(uint16_t p_prop_code, uint8_t p_expected_size, 
 
 
 
-void PTPCamera::_openSession() {
+PTPStat PTPCamera::openSession() {
     
     static uint8_t conf = 0;
     
+  //  _doTasks();
+    
+    if( error() != ERROR_NONE )
+        return PTP_ERROR;
+    
+        
     if(USB_HostState == HOST_STATE_Configured) {
         if(conf != USB_HostState) {
             conf = USB_HostState;
-            PTP_OpenSession();
-            PTP_GetDeviceInfo();
+            if( PTP_OpenSession() != PTP_OK )  {
+                status(STAT_ERROR);
+                error(ERROR_SESSION);
+                return PTP_ERROR;
+            }
+            if( PTP_GetDeviceInfo() != PTP_OK ) {
+                status(STAT_ERROR);
+                error(ERROR_SETUP);
+                return PTP_ERROR;
+            }
+            m_session = true;
         }
     }
     else {
         conf = USB_HostState;
     }
     
+    return PTP_OK;
+    
 }
 
 void PTPCamera::_doTasks() {
-    _openSession();
-    SI_Host_USBTask(&DigitalCamera_SI_Interface);
     USB_USBTask();
+    openSession();
+    SI_Host_USBTask(&DigitalCamera_SI_Interface);
 }
 
 
@@ -1357,6 +1383,7 @@ PTPCamera Camera;
  *  starts the library USB task to begin the enumeration and USB management process.
  */
 void EVENT_USB_Host_DeviceAttached(void) {
+    
 	Camera.status(STAT_CONNECTED);
     Camera.error(ERROR_NONE);
 }
@@ -1365,6 +1392,7 @@ void EVENT_USB_Host_DeviceAttached(void) {
  *  stops the library USB task management process.
  */
 void EVENT_USB_Host_DeviceUnattached(void) {
+
 	Camera.status(STAT_NOTCONNECTED);
     Camera.error(ERROR_NONE);
 }
@@ -1374,6 +1402,7 @@ void EVENT_USB_Host_DeviceUnattached(void) {
  */
 void EVENT_USB_Host_DeviceEnumerationComplete(void) {
     
+
 	uint16_t ConfigDescriptorSize;
     
     if ( USB_Host_GetDeviceConfigDescriptor(1, &ConfigDescriptorSize, PTP_Buffer, sizeof(PTP_Buffer)) != HOST_GETCONFIG_Successful ) {
@@ -1398,7 +1427,7 @@ void EVENT_USB_Host_DeviceEnumerationComplete(void) {
 /** Event handler for the USB_HostError event. This indicates that a hardware error occurred while in host mode. */
 void EVENT_USB_Host_HostError(const uint8_t p_err) {
 	USB_Disable();
-    
+
     Camera.status(STAT_ERROR);
     Camera.error(ERROR_HARD);
     
@@ -1408,11 +1437,10 @@ void EVENT_USB_Host_HostError(const uint8_t p_err) {
  *  enumerating an attached USB device.
  */
 void EVENT_USB_Host_DeviceEnumerationFailed(const uint8_t p_err, const uint8_t p_suberr) {
+    
     Camera.status(STAT_ERROR);
     Camera.error(ERROR_HARD);
 }
-
-
 
 
 
@@ -1421,7 +1449,7 @@ PTPStat PTP_Transaction(uint16_t p_op, uint8_t p_recv, uint8_t p_parmCount, uint
 
     
     uint8_t error_code;
-    
+
     PIMA_Container_t PIMA_Block  = {
         // .DataLength = 
         CPU_TO_LE32(PIMA_DATA_SIZE(p_dataCount)),
@@ -1539,10 +1567,21 @@ uint8_t SI_Host_ReceiveResponseCode(USB_ClassInfo_SI_Host_t* const p_interface, 
     return PIPE_RWSTREAM_NoError;
 }
 
-PTPStat PTP_OpenSession() {
-    if (SI_Host_OpenSession(&DigitalCamera_SI_Interface) != PIPE_RWSTREAM_NoError) {
-        // puts_P(PSTR("Could not open PIMA session.\r\n"));
 
+PTPStat PTP_OpenSession() {
+    
+     
+    static uint8_t foo = LOW;
+    
+     
+    fooDebug = SI_Host_OpenSession(&DigitalCamera_SI_Interface);
+    
+    if (fooDebug != PIPE_RWSTREAM_NoError) {
+        // puts_P(PSTR("Could not open PIMA session.\r\n"));
+        digitalWrite(22, !foo);
+        
+              foo = !foo;
+        
         USB_Host_SetDeviceConfiguration(0);
         return PTP_ERROR;
     }
@@ -1564,7 +1603,7 @@ PTPStat PTP_CloseSession() {
 
 PTPStat PTP_GetDeviceInfo() {
     
-    if(PTP_Transaction(PIMA_OPERATION_GETDEVICEINFO, 1, 0, NULL, 0, NULL)) 
+    if(PTP_Transaction(PIMA_OPERATION_GETDEVICEINFO, 1, 0, NULL, 0, NULL) != PTP_OK) 
         return PTP_ERROR;
     
     char *DeviceInfoPos = PTP_Buffer;

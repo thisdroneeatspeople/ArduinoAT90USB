@@ -48,7 +48,7 @@
 #include <LUFA/Drivers/USB/USB.h>
 
 static HID_ReportInfo_t HIDReportInfo;
-
+static USB_ClassInfo_SI_Host_t DigitalCamera_SI_Interface;
 
 
 /** HID Report Descriptor Usage Page value for a desktop keyboard. */
@@ -75,7 +75,11 @@ enum LUFAErr {
     /** Error Receiving Byte */
     ERROR_RECV,
     /** Not Supported */
-    ERROR_SUPPORTED
+    ERROR_SUPPORTED,
+    /** Setup Error */
+    ERROR_SETUP,
+    /** Error Setting Up Session */
+    ERROR_SESSION
 };
 
 /** Common Status Codes */
